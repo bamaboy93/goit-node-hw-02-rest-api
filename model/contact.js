@@ -1,5 +1,6 @@
-const { Schema, model } = require("mongoose");
+const { Schema, SchemaTypes, model } = require("mongoose");
 const { ValidContactName } = require("../config/constant");
+const mongoosePaginate = require("mongoose-paginate-v2");
 
 const contactSchema = new Schema(
   {
@@ -19,6 +20,10 @@ const contactSchema = new Schema(
       required: [true, "Set phone for contact"],
     },
     favorite: { type: Boolean, default: false },
+    owner: {
+      type: SchemaTypes.ObjectId,
+      ref: "user",
+    },
   },
   {
     versionKey: false,
@@ -33,7 +38,7 @@ const contactSchema = new Schema(
     toObject: { virtuals: true },
   }
 );
-
+contactSchema.plugin(mongoosePaginate);
 const Contact = model("Contact", contactSchema);
 
 module.exports = Contact;
