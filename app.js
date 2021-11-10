@@ -3,6 +3,8 @@ const logger = require("morgan");
 const cors = require("cors");
 const helmet = require("helmet");
 const boolParser = require("express-query-boolean");
+require("dotenv").config();
+const AVATAR_OF_USER = process.env.AVATAR_OF_USER;
 
 const contactsRouter = require("./routes/contacts/contacts");
 const usersRouter = require("./routes/users/users");
@@ -11,6 +13,7 @@ const app = express();
 
 const formatsLogger = app.get("env") === "development" ? "dev" : "short";
 
+app.use(express.static(AVATAR_OF_USER));
 app.use(helmet());
 app.use(logger(formatsLogger));
 app.use(cors());
@@ -25,7 +28,12 @@ app.use((req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  res.status(500).json({ status: "fail", code: 500, message: err.message });
+  const statusCode = err.status || 500;
+  res.status(statusCode).json({
+    status: statusCode === 500 ? "fail" : "error",
+    code: statusCode,
+    message: err.message,
+  });
 });
 
 module.exports = app;
