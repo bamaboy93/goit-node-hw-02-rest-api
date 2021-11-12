@@ -3,6 +3,12 @@ const jwt = require("jsonwebtoken");
 const path = require("path");
 const mkdirp = require("mkdirp");
 const UploadService = require("../services/file-upload");
+const EmailService = require("../services/email/service");
+const {
+  CreateSenderSendGrid,
+  CreateSenderNodmailer,
+} = require("../services/email/sender");
+const { v4: uuidv4 } = require("uuid");
 const { HttpCode } = require("../config/constant");
 require("dotenv").config();
 const SECRET_KEY = process.env.JWT_SECRET_KEY;
@@ -18,7 +24,20 @@ const registration = async (req, res, next) => {
     });
   }
   try {
-    const newUser = await Users.create({ password, email, subscription });
+    const newUser = await Users.create({
+      password,
+      email,
+      subscription,
+      verifyToken: uuidv4(),
+    });
+    const emailService = new EmailService(
+      process.env.NODE_ENV,
+      new CreateSenderSendGrid()
+    );
+    const statusEmail = await emailService.sendVerifyEmail(
+      newUser.email,
+      newUser.verifyToken
+    );
     return res.status(HttpCode.CREATED).json({
       status: "success",
       code: HttpCode.CREATED,
@@ -27,6 +46,7 @@ const registration = async (req, res, next) => {
         email: newUser.email,
         subscription: newUser.subscription,
         avatarURL: newUser.avatarURL,
+        successEmail: statusEmail,
       },
     });
   } catch (error) {
@@ -39,7 +59,7 @@ const login = async (req, res, next) => {
   const user = await Users.findByEmail(email);
 
   const isValidPassword = await user.isValidPassword(password);
-  if (!user || !isValidPassword) {
+  if (!user || !isValidPassword || !user?.verify) {
     return res.status(HttpCode.UNAUTHORIZED).json({
       status: "error",
       code: HttpCode.UNAUTHORIZED,
@@ -113,10 +133,52 @@ const uploadAvatar = async (req, res, next) => {
   });
 };
 
+const verifyUser = async (req, res, next) => {
+  const user = await Users.findUserByVerifyToken(req.params.verificationToken);
+  if (user) {
+    await Users.updateTokenVerify(user._id, true, null);
+    return res.status(HttpCode.OK).json({
+      status: "success",
+      code: HttpCode.OK,
+      message: "Verification successful",
+    });
+  }
+  return res
+    .status(HttpCode.NOT_FOUND)
+    .json({ status: "error", code: HttpCode.NOT_FOUND, message: "Not found" });
+};
+
+const repeatEmailForVerifyUser = async (req, res, next) => {
+  const { email } = req.body;
+  const user = await Users.findByEmail(email);
+  if (user && user.verify === false) {
+    const { email, verifyToken } = user;
+    const emailService = new EmailService(
+      process.env.NODE_ENV,
+      new CreateSenderNodmailer()
+    );
+    await emailService.sendVerifyEmail(email, verifyToken);
+    return res.status(HttpCode.OK).json({
+      status: "success",
+      code: HttpCode.OK,
+      message: "Verification email sent",
+    });
+  }
+  if (user && user.verify) {
+    return res.status(HttpCode.BAD_REQUEST).json({
+      status: "error",
+      code: HttpCode.BAD_REQUEST,
+      message: "Verification has already been passed",
+    });
+  }
+};
+
 module.exports = {
   registration,
   login,
   logout,
   getCurrent,
   uploadAvatar,
+  verifyUser,
+  repeatEmailForVerifyUser,
 };
